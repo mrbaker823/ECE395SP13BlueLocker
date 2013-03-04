@@ -1,10 +1,5 @@
 #include "io_experiment.h"
 
-/* password hashing is implemented, but buggy.
- * it seems password hashes aren't matching; I suspect that
- *   there's a discrepancy somewhere in how strings are handled
- */
-
 #define PASS_SALT "This is a song that gets on everybody's nerves / on everybody's nerves / on everybody's nerves / \
 This is a song that gets on everybody's nerves / and this is how it goes..."
 
@@ -38,43 +33,24 @@ void lpc_init(){
 
 int main(){
 	int i;
-//	int blinks;
-//	int state = 0;
 	SHA1Context pass;
 
 	lpc_init();
 
-//	password[0] = '\0';
 	password_length = 0;
 
 	while(1){
-		//int i = LPC_GPIO0->DATA & (1 << 6);
-		while (UART_done == 0) {
-//		 	for (i = 0; i < 0x0007FFFF; i++) {}
-			/* enable line above to prevent terminal spam for echoes */
-//			UART_data_write('.');
-			/* enable line above for dot echo */
-//			UART_data_write_string("password currently set to ");
-//			UART_data_write_string(password);
-//			UART_data_write_string("\r\n");
-		}
+		while (UART_done == 0);
+
 		/* the bluetooth parsing code can go here; for now,
 		 *   this code blinks the LED five times on a newline
 		 */
 
-//		UART_data_write_string("password currently set to ");
-//		UART_data_write_string(password);
-//		UART_data_write_string("\r\n");
-
-//		for (blinks = 0; blinks < 10; blinks++) {
-//		 	for (i = 0; i < 0x0007FFFF; i++) {}
-//			GPIO0_output_toggle(GPIO_P7);
-//		}
-		/* enable code block above to add LED blinking on carriage return */ 
-
-//		UART_data_write_string("password currently set to ");
-//		UART_data_write_string(password);
-//		UART_data_write_string("\r\n");
+#if DEBUG
+		UART_data_write_string("password currently set to ");
+		UART_data_write_string(password);
+		UART_data_write_string("\r\n");
+#endif 
 
 		/* below is a test parser */
 
@@ -92,10 +68,6 @@ int main(){
 				GPIO0_output_toggle(GPIO_P3);
 			}
 		}
-		
-//		UART_data_write_string("password currently set to ");
-//		UART_data_write_string(password);
-//		UART_data_write_string("\r\n");
 
 		/* close [password]	*/
 		if (strncmp(UART_buffer, "close", 5) == 0) {
@@ -107,16 +79,16 @@ int main(){
 			}
 		}
 
-//		UART_data_write_string("password currently set to ");
-//		UART_data_write_string(password);
-//		UART_data_write_string("\r\n");
-
 		/* set [oldpass] [newpass] 
 		 * oldpass is a paramater iff a password is currently set*/
 
 		if (strncmp(UART_buffer, "set", 3) == 0) {
-			//UART_data_write_string("password is ");
-			//UART_data_write_string(password);
+#if DEBUG
+			{
+				UART_data_write_string("password is ");
+				UART_data_write_string(password);
+			}
+#endif
 			UART_data_write_string("password length is ");
 			UART_data_write('0' + (password_length/10));
 			UART_data_write('0' + (password_length%10));
@@ -125,12 +97,15 @@ int main(){
 				UART_data_write_string("password is currently null, setting to ");
 				UART_data_write_string(UART_buffer + 4);
 				UART_data_write_string("\r\n");
-				//strcpy(password, (UART_buffer + 4));
 				setpass(&pass, &(UART_buffer[4]));
 				password_length = strlen(&(UART_buffer[4]));
-				//UART_data_write_string("password set to ");
-				//UART_data_write_string(password);
-				//UART_data_write_string("\r\n");
+#if DEBUG
+				{
+					UART_data_write_string("password set to ");
+					UART_data_write_string(password);
+					UART_data_write_string("\r\n");
+				}
+#endif
 				UART_data_write_string("password set\r\n");
 			} else if ((UART_buffer[3] == ' ') && checkpass(&pass, UART_buffer + 4, password_length)) {
 				
@@ -140,14 +115,14 @@ int main(){
 				UART_data_write_string("\r\n");
 				if (UART_buffer[4 + password_length] == '\0') {
 					UART_data_write_string("no new password, unsetting pass\r\n");
-					//password[0] = '\0';
+
 					password_length = 0;
 					UART_data_write_string("password reset\r\n");
 				} else if ((UART_buffer[4 + password_length] == ' ') &&
 					(UART_buffer[4 + password_length + 1] != '\0')) {
 
 					UART_data_write_string("new password supplied, changing\r\n");
-					//strcpy(password, (UART_buffer + 4 + password_length + 1));
+
 					setpass(&pass, &(UART_buffer[4 + password_length + 1]));
 					password_length = strlen(&(UART_buffer[4 + password_length + 1]));
 					UART_buffer[password_length] = '\0';
@@ -156,19 +131,8 @@ int main(){
 			}
 		}
 
-//		UART_data_write_string("password currently set to ");
-//		UART_data_write_string(password);
-//		UART_data_write_string("\r\n");
-
 		UART_done = 0;		
 		UART_interrupt_enable();
-//		if(GPIO0_data(GPIO_P6) != 0 && state == 0){
-//			GPIO0_output_toggle(GPIO_P7);
-//			state = 1;
-//		} else if(GPIO0_data(GPIO_P6) == 0 && state == 1){
-//			state = 0;
-//		}
-//		LPC_UART->THR = 0x58;
 	}
 //	return 0;	
 }

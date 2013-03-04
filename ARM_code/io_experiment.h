@@ -7,10 +7,7 @@
 #include "stdlib.h"
 #include "sha1.h"
 
-//extern char password[];
-//extern int password_length;
-//extern char temp[];
-// these shouldn't need to be here; I'm debugging...
+#define DEBUG 1
 
 void setpass(SHA1Context*, char*);
 int checkpass(SHA1Context*, char*, int);
