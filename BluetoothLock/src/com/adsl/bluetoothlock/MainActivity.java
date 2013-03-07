@@ -17,6 +17,7 @@ import android.content.IntentFilter;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.util.Log;
 import android.view.Menu;
 import android.view.View;
 import android.view.View.OnClickListener;
@@ -58,12 +59,14 @@ public class MainActivity extends Activity {
 				Toast.makeText(getApplicationContext(), "CONNECT", 0).show();
 				//String tempS = "locks";
 				//connectedThread.write(tempS.getBytes());
+				connectedThread.start();
 				break;
 			case MESSAGE_READ:
-				System.out.println("At Message_Read");
+				//System.out.println("At Message_Read");
 				byte[] readBuf = (byte[])msg.obj;
-				String s = new String(readBuf);
-				Toast.makeText(getApplicationContext(), s, 0).show();
+				String s =  new String(readBuf, 0, msg.arg1);
+				System.out.print(s);
+				//Toast.makeText(getApplicationContext(), s, Toast.LENGTH_SHORT).show();
 				break;
 			}
 		}
@@ -208,7 +211,7 @@ public class MainActivity extends Activity {
 		openLock.setOnClickListener(new OnClickListener() {
 			@Override
 			public void onClick(View v) {
-				String tempS = "open\r\n";
+				String tempS = "open\r";
 				connectedThread.write(tempS.getBytes());
 			}
 		});
@@ -216,7 +219,7 @@ public class MainActivity extends Activity {
 		closeLock.setOnClickListener(new OnClickListener() {
 			@Override
 			public void onClick(View v) {
-				String tempS = "close\r\n";
+				String tempS = "close\r";
 				connectedThread.write(tempS.getBytes());
 			}
 		});
@@ -381,8 +384,9 @@ public class MainActivity extends Activity {
 	    }
 	 
 	    public void run() {
-	        byte[] buffer;// = new byte[1024];  // buffer store for the stream
-	        int bytes; // bytes returned from read()
+            //byte[] buffer = new byte[1024];
+	    	byte[] buffer;
+            int bytes; // bytes returned from read()
 	 
 	        // Keep listening to the InputStream until an exception occurs
 	        while (true) {
@@ -402,8 +406,9 @@ public class MainActivity extends Activity {
 	    /* Call this from the main activity to send data to the remote device */
 	    public void write(byte[] bytes) {
 	        try {
-	        	System.out.println("" + ((char) bytes[3]) + ((char) bytes[4]) + (char) bytes[5]);
-	            mmOutStream.write(bytes);
+	        	//System.out.println("" + ((char) bytes[3]) + ((char) bytes[4]+32));// + (char) bytes[5]+32);
+	        	mmOutStream.write(bytes);
+
 	        } catch (IOException e) { }
 	    }
 	 
