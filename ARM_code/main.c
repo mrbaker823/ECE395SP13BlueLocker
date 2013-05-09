@@ -1,169 +1,208 @@
-#include "io_experiment.h"
+/* main.c
+ * Written by Ethan Trovillion and Ethan Warth
+ * Part of the BlueLock project
+ * ECE 395 Spring 2013
+ * University of Illinois Urbana-Champaign
+ */
+#include "bluelock.h"
 
-#define PASS_SALT "This is a song that gets on everybody's nerves / on everybody's nerves / on everybody's nerves / \
-This is a song that gets on everybody's nerves / and this is how it goes..."
-
-char password[512];
-int password_length;
+device flash;
+device uart;
 
 void lpc_init(){
+	// Enable general purpose I/O block
 	GPIO_enable();
+	// Enable Asynchronous Serial block
 	UART_enable();
+	// Enable Synchronous Serial block
+	SPIO_enable();
 
+	storage_init();
+
+	// Set I/O0 port 7 to output (solenoid control/open indicator)
 	GPIO0_dir_output(GPIO_P7);
-
-	GPIO0_interrupt_enable(GPIO_P6);
-
+	// Set I/O0 port 4 to output (closed indicator)
 	GPIO0_dir_output(GPIO_P4);
+	// Set I/O1 port 4 to output (end of command indicator)
+	GPIO1_dir_output(GPIO_P4);
 
-	GPIO0_output_high(GPIO_P4);
+	// Set initial output levels
+	GPIO0_output_high(GPIO_P7);
+	GPIO0_output_low(GPIO_P4);	
+	GPIO1_output_high(GPIO_P4);
 
-	GPIO0_dir_input(GPIO_P6); // we don't actually need this
-
-	GPIO0_dir_output(GPIO_P3);
-	GPIO0_output_high(GPIO_P4);
-	GPIO0_dir_output(GPIO_P2);
-	GPIO0_output_high(GPIO_P4);
-	
-	GPIO_interrupt_enable();
+	// Begin listening to UART
 	UART_interrupt_enable();
-	// if we use this often enough, it might be best to make another file
-	//   for interrupt abstraction 
 }
 
 int main(){
-	int i;
-	SHA1Context pass;
+	char input[512];
 
 	lpc_init();
+	dinit(&flash, "FLASH");
+	dinit(&uart, "UART");
 
-	password_length = 0;
+	readpass();
 
 	while(1){
-		while (UART_done == 0);
-
-#if DEBUG
-		{
-			UART_data_write_string("password currently set to ");
-			UART_data_write_string(password);
-			UART_data_write_string("\r\n");
-		}
-#endif 
-
-		/* below is a test parser */
-
+		dread(&uart, input, 512, 0);
+					
 		/* test */
-		if (strncmp(UART_buffer, "test", 4) == 0) {
-			sha1_test();
+		if (strncmp(input, "test", 4) == 0) {
+			test(input);
 		}
 
 		/* open [password] */
-		if (strncmp(UART_buffer, "open", 4) == 0) { 
-			if (password_length == 0 || checkpass(&pass, UART_buffer + 5, password_length)) {
-				GPIO0_output_toggle(GPIO_P3);
-				UART_data_write_string("open solenoid activated\r\n");
-		 		for (i = 0; i < 0x0007FFFF; i++) {}
-				GPIO0_output_toggle(GPIO_P3);
-			}
+		else if (strncmp(input, "open", 4) == 0) { 
+			open(input);
 		}
 
 		/* close [password]	*/
-		if (strncmp(UART_buffer, "close", 5) == 0) {
-			if (password_length == 0 ||	checkpass(&pass, UART_buffer + 6, password_length)) {
-				GPIO0_output_toggle(GPIO_P2);
-				UART_data_write_string("close solenoid activated\r\n");
-		 		for (i = 0; i < 0x0007FFFF; i++) {}
-				GPIO0_output_toggle(GPIO_P2);
-			}
+		else if (strncmp(input, "close", 5) == 0) {
+			close(input);
 		}
 
-		/* set [oldpass] [newpass] 
+		/* set oldpass[\r\nnewpass]
+		 * set [newpass] <- if password is unset
 		 * oldpass is a paramater iff a password is currently set*/
-
-		if (strncmp(UART_buffer, "set", 3) == 0) {
-#if DEBUG
-			{
-				UART_data_write_string("password is ");
-				UART_data_write_string(password);
-				UART_data_write_string("password length is ");
-				UART_data_write('0' + (password_length/10));
-				UART_data_write('0' + (password_length%10));
-				UART_data_write_string("\r\n");
-			}
-#endif			
-			if ((password_length == 0) && (UART_buffer[3] == ' ')) {
-				UART_data_write_string("password is currently null, setting to ");
-				UART_data_write_string(UART_buffer + 4);
-				UART_data_write_string("\r\n");
-				setpass(&pass, &(UART_buffer[4]));
-				password_length = strlen(&(UART_buffer[4]));
-#if DEBUG
-				{
-					UART_data_write_string("password set to ");
-					UART_data_write_string(password);
-					UART_data_write_string("\r\n");
-				}
-#endif
-				UART_data_write_string("password set\r\n");
-			} else if ((UART_buffer[3] == ' ') && checkpass(&pass, UART_buffer + 4, password_length)) {
-#if DEBUG
-				{
-					UART_data_write_string("old password matches\r\n");
-					UART_data_write_string("checking character \"");
-					UART_data_write(UART_buffer[4 + password_length]);
-					UART_data_write_string("\r\n");
-				}
-#endif
-				if (UART_buffer[4 + password_length] == '\0') {
-					UART_data_write_string("no new password, unsetting pass\r\n");
-					password_length = 0;
-					UART_data_write_string("password reset\r\n");
-				} else if ((UART_buffer[4 + password_length] == ' ') &&
-					(UART_buffer[4 + password_length + 1] != '\0')) {
-
-					UART_data_write_string("new password supplied, changing\r\n");
-
-					setpass(&pass, &(UART_buffer[4 + password_length + 1]));
-					password_length = strlen(&(UART_buffer[4 + password_length + 1]));
-					UART_buffer[password_length] = '\0';
-					UART_data_write_string("password changed\r\n");
-				}
-			}
+		else if (strncmp(input, "set", 3) == 0) {
+			set(input);
 		}
-
-		UART_done = 0;		
+		else {
+				dwrite_string(&uart, "command not recognized\r\n", 0);
+		}
+		
 		UART_interrupt_enable();
 	}
 //	return 0;	
 }
 
-void setpass(SHA1Context *pass_hash, char* pass) {
-
-    SHA1Reset(pass_hash);
-	SHA1Input(pass_hash, PASS_SALT, strlen(PASS_SALT));
-    SHA1Input(pass_hash, (const unsigned char *) pass, strlen(pass));
-	SHA1Result(pass_hash);
+/* test
+ * parameters - 
+ *   input - The input string received from the user.
+ * outputs - 
+ *   none
+ * side-effects - 
+ *   resets any previously set password in storage
+ */
+void test(const char *input) {
+	dwrite_string(&uart, "The hash on the flash was reset.\r\n", 0);
+	dwrite_string(&uart, "The hash on the ARM was also reset.\r\n", 0);
+	unsetpass();
 }
 
-int checkpass(SHA1Context *pass_hash, char *string, int length) {
+/* open
+ * parameters - 
+ *   input - The input string received from the user.
+ * outputs - 
+ *   none
+ * side-effects - 
+ *   Sets GPIO0_4 high and GPIO0_7 low, changing output LEDs
+ *   and activating the solenoid
+ */
+void open(const char* input) {
+	
+	if (((passisset() == 0) && (input[4] == '\0')) ||
+		((passisset() != 0) && (input[4] == ' ') && checkpass(input + 5))) {
+		
+		dwrite_string(&uart, "open solenoid activated\r\n", 0);
 
-	SHA1Context string_hash; 
-	int i;
-
-    SHA1Reset(&string_hash);
-	SHA1Input(&string_hash, PASS_SALT, strlen(PASS_SALT));
-    SHA1Input(&string_hash, (const unsigned char *) string, length);
-
-    if (!SHA1Result(&string_hash)) {
-        UART_data_write_string("ERROR-- could not compute message digest\r\n");
-		return 0; // false
-    }
-
-    for(i = 0; i < 5 ; i++){
-		if (string_hash.Message_Digest[i] != pass_hash->Message_Digest[i]) { return 0; } // false
-    }
-
-	return 1; // true
-
+		GPIO0_output_low(GPIO_P7);
+		GPIO0_output_high(GPIO_P4);
+	} else if ((passisset() != 0) && (input[4] == '\0')) {
+		dwrite_string(&uart, "password not supplied\r\n", 0);
+	} else if ((input[4] == '\0') || (input[4] == ' ')) {
+		dwrite_string(&uart, "password not recognized\r\n", 0);
+	} else {
+		dwrite_string(&uart, "command not recognized\r\n", 0);
+	}
+	
 }
 
+/* close
+ * parameters - 
+ *   input - The input string received from the user.
+ * outputs - 
+ *   none
+ * side-effects - 
+ *   Sets GPIO0_4 low and GPIO0_7 high, changing output LEDs
+ *   and deactivating the solenoid
+ */
+void close(const char* input) {
+	
+	if (((passisset() == 0) && (input[5] == '\0')) ||
+		((passisset() != 0) && (input[5] == ' ') && checkpass(input + 6))) {
+		
+		dwrite_string(&uart, "close solenoid activated\r\n", 0);
+
+		GPIO0_output_high(GPIO_P7);
+		GPIO0_output_low(GPIO_P4);
+	} else if ((passisset() != 0) && (input[5] == '\0')) {
+		dwrite_string(&uart, "password not supplied\r\n", 0);
+	} else if ((input[5] == '\0') || (input[5] == ' ')) {
+		dwrite_string(&uart, "password not recognized\r\n", 0);
+	} else {
+		dwrite_string(&uart, "command not recognized\r\n", 0);
+	}
+	
+}
+
+/* set
+ * parameters - 
+ *   input - The input string received from the user.
+ * outputs - 
+ *   none
+ * side-effects - 
+ *   Changes the password on the device, both in memory and in storage
+ */
+void set(char* input) {
+	
+	if ((passisset() == 0) && (input[3] == ' ')) {
+		dwrite_string(&uart, "password is currently null, setting to ", 0);
+		dwrite_string(&uart, input + 4, 0);
+		dwrite_string(&uart, "\r\n", 0);
+		setpass(input + 4);
+		dwrite_string(&uart, "password set\r\n", 0);
+	} else if ((passisset() == 0) && (input[3] == '\0')) {
+		dwrite_string(&uart, "password null, no new password provided\r\n", 0);
+		dwrite_string(&uart, "transitioning into password change state\r\n", 0);
+	} else if (passisset() == 0) {
+		dwrite_string(&uart, "command not recognized\r\n", 0);
+	} else if ((input[3] == ' ') && checkpass(input + 4)) {
+
+		dwrite_string(&uart, "old password matches\r\n", 0);
+		dwrite_string(&uart, "transitioning into password change state\r\n", 0);
+		fetch_new_pass(input);
+		
+	} else if (input[3] == ' ') {
+		dwrite_string(&uart, "password not recognized\r\n", 0);
+	} else if (input[3] == '\0') {
+		dwrite_string(&uart, "password not supplied\r\n", 0);
+	} else {
+		dwrite_string(&uart, "command not recognized\r\n", 0);
+	}
+	
+}
+
+/* fetch_new_pass
+ * parameters - 
+ *   input - A scratch buffer used to recieve input
+ * outputs - 
+ *   none
+ * side-effects - 
+ *   Changes the password on the device, both in memory and in storage
+ */
+void fetch_new_pass(char* input) {
+	UART_interrupt_enable();
+	dread(&uart, input, 512, 0);
+
+	if (strlen(input) != 0) {
+		dwrite_string(&uart, "new password supplied, changing\r\n", 0);
+		setpass(input);
+		dwrite_string(&uart, "password changed\r\n", 0);
+	} else {
+		dwrite_string(&uart, "no new password, unsetting pass\r\n", 0);
+		unsetpass();
+		dwrite_string(&uart, "password reset\r\n", 0);
+	}
+}
